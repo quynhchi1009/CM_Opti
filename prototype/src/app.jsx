@@ -31,7 +31,7 @@
               <Icon name="menu" size={22} />
             </button>
           )}
-          <span className="wordmark">Optimizely</span>
+          <img className="wordmark" src="assets/optimizely-logo.png" alt="Optimizely" width="88" height="21" />
           <button type="button" className="crumb">Optimizely Solution Architect <Icon name="chevronDown" size={16} /></button>
           <span className="crumb-sep" aria-hidden="true">/</span>
           <button type="button" className="crumb">Admin Center <Icon name="chevronDown" size={16} /></button>
@@ -208,6 +208,9 @@
       ['manage-members', 'Manage · Marketing - US members'],
       ['manage-details', 'Manage · department details'],
       ['empty', 'Empty state · no departments'],
+      ['hl-intro', 'Hard limit · intro (first 30 days)'],
+      ['hl-after', 'Hard limit · after intro (control only)'],
+      ['hl-reached', 'Hard limit · limit reached'],
     ];
     return (
       <div className="scenarios" ref={ref}>
@@ -361,6 +364,7 @@
       const unassigned = state.users.filter((u) => !u.deptId).slice(0, 6).map((u) => u.id);
       if (id === 'reset') {
         setState(freshState());
+        window.dispatchEvent(new CustomEvent('hl-scenario', { detail: 'hl-reset' }));
         toast('Prototype data reset.');
       } else if (id === 'wizard') setWizard({ startStep: 0 });
       else if (id === 'wizard-over') setWizard({ startStep: 1, preset: { name: 'Marketing - EU', description: 'EU campaigns and localisation', members: unassigned, pct: '60' } });
@@ -370,7 +374,10 @@
       else if (id === 'manage-over') state.departments.some((d) => d.id === 'eng') ? setManage({ deptId: 'eng', tab: 'usage' }) : toast('Reset the data first: Engineering was deleted.');
       else if (id === 'manage-members') state.departments.some((d) => d.id === 'mus') ? setManage({ deptId: 'mus', tab: 'members' }) : toast('Reset the data first: Marketing - US was deleted.');
       else if (id === 'manage-details') state.departments.length ? setManage({ deptId: state.departments[0].id, tab: 'details' }) : toast('There are no departments to manage.');
-      else if (id === 'empty') {
+      else if (id.startsWith('hl-')) {
+        window.dispatchEvent(new CustomEvent('hl-scenario', { detail: id }));
+        document.getElementById('main')?.scrollIntoView();
+      } else if (id === 'empty') {
         setState((s) => ({ ...s, departments: [], users: s.users.map((u) => ({ ...u, deptId: null, usage: { none: u.consumed } })) }));
       }
     };
