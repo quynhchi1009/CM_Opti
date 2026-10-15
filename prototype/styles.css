@@ -93,10 +93,7 @@ a { color: inherit; }
   padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .topbar-left, .topbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.wordmark {
-  font-weight: 800; font-size: 23px; letter-spacing: -0.04em; color: var(--brand-green);
-  margin-right: 20px; font-style: italic;
-}
+.wordmark { display: block; height: 21px; width: auto; margin-right: 20px; }
 .crumb {
   display: inline-flex; align-items: center; gap: 6px; border: 0; background: none;
   font-size: 14.5px; padding: 6px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
@@ -781,7 +778,7 @@ a { color: inherit; }
   .sidebar.is-open { transform: none; visibility: visible; transition: transform 260ms var(--ease-out); }
   .nav-scrim { display: block; position: fixed; inset: 56px 0 0; z-index: 44; background: rgb(23 28 25 / 0.32); }
   .topbar { padding: 0 12px; }
-  .wordmark { font-size: 22px; margin-right: 8px; }
+  .wordmark { height: 20px; margin-right: 8px; }
   .topbar .crumb, .crumb-sep, .ask-opal { display: none; }
   .topbar .icon-btn { width: 36px; height: 36px; }
   .main { padding: 24px 16px 120px; }

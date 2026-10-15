@@ -31,7 +31,7 @@
               <Icon name="menu" size={22} />
             </button>
           )}
-          <span className="wordmark">Optimizely</span>
+          <img className="wordmark" src="assets/optimizely-logo.png" alt="Optimizely" width="88" height="21" />
           <button type="button" className="crumb">Optimizely Solution Architect <Icon name="chevronDown" size={16} /></button>
           <span className="crumb-sep" aria-hidden="true">/</span>
           <button type="button" className="crumb">Admin Center <Icon name="chevronDown" size={16} /></button>
