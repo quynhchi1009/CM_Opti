@@ -434,6 +434,7 @@
     return (
       <>
         <OrgSummary consumed={consumed} pool={MOCK.POOL} allocated={allocated} onRequest={onRequest} />
+        <HardLimitSection consumed={consumed} pool={MOCK.POOL} onRequest={onRequest} />
         <DepartmentTable
           departments={departments}
           users={users}
