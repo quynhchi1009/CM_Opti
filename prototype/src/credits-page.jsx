@@ -2,9 +2,80 @@
 (() => {
   const { useState, useEffect, useRef } = React;
 
-  function OrgSummary({ consumed, pool, allocated, onRequest }) {
-    const status = statusOf(consumed, pool);
+  // Credit batches: status comes from the dates. Only active batches count toward the org totals.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const EXPIRY_WARN_DAYS = 60;
+  const batchDate = (iso) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    return `${d} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]} ${y}`;
+  };
+  const batchStatus = (b) => (MOCK.TODAY < b.start ? 'upcoming' : MOCK.TODAY > b.end ? 'expired' : 'active');
+  const BATCH_LABEL = { active: 'Active', upcoming: 'Upcoming', expired: 'Expired' };
+  const daysUntil = (iso) => Math.round((Date.parse(iso) - Date.parse(MOCK.TODAY)) / DAY_MS);
+
+  function summarize(raw) {
+    const batches = raw.map((b) => ({ ...b, status: batchStatus(b) }));
+    const active = batches.filter((b) => b.status === 'active');
+    const total = active.reduce((a, b) => a + b.allocated, 0);
+    const remaining = active.reduce((a, b) => a + b.remaining, 0);
+    return { batches, active, total, remaining, consumed: total - remaining };
+  }
+
+  // One notice at a time, most actionable first. Wording stays factual: nothing here says usage is blocked.
+  function batchNotice(sum) {
+    const { batches, active, total, remaining } = sum;
+    if (!active.length) {
+      const next = batches.filter((b) => b.status === 'upcoming').sort((a, b) => a.start.localeCompare(b.start))[0];
+      if (next) return { tone: 'info', text: `No active credits yet. ${fmt(next.allocated)} credits start on ${batchDate(next.start)}.` };
+      const last = [...batches].sort((a, b) => b.end.localeCompare(a.end))[0];
+      return { tone: 'info', text: `No active credits. Your last batch expired on ${batchDate(last.end)}.`, request: true };
+    }
+    if (total > 0 && remaining === 0) return { tone: 'warn', text: 'All active credits are used.', request: true, tail: 'Your team can still use Opal.' };
+    const soon = active
+      .filter((b) => b.remaining > 0 && daysUntil(b.end) <= EXPIRY_WARN_DAYS)
+      .sort((a, b) => a.end.localeCompare(b.end))[0];
+    if (soon) return { tone: 'info', text: `${fmt(soon.remaining)} credits expire on ${batchDate(soon.end)}. Unused credits won't carry over.` };
+    return null;
+  }
+
+  function BatchTable({ batches, id }) {
+    return (
+      <div className="batch-wrap table-scroll" id={id}>
+        <table className="table batch-table">
+          <thead>
+            <tr>
+              <th>Start date</th>
+              <th>Expiration date</th>
+              <th className="num">Credits allocated</th>
+              <th className="num">Credits remaining</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {batches.map((b, i) => (
+              <tr key={i} className={b.status === 'expired' ? 'is-expired' : undefined}>
+                <td className="tabular">{batchDate(b.start)}</td>
+                <td className="tabular">{batchDate(b.end)}</td>
+                <td className="num tabular">{fmt(b.allocated)}</td>
+                <td className="num tabular">{fmt(b.status === 'expired' ? 0 : b.remaining)}</td>
+                <td><span className={`badge badge-${b.status}`}>{BATCH_LABEL[b.status]}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  function OrgSummary({ rawBatches, allocated, onRequest }) {
+    const sum = summarize(rawBatches);
+    const { consumed, total: pool, remaining, batches } = sum;
+    const [showBatches, setShowBatches] = useState(batches.length > 1);
+    const [dismissed, setDismissed] = useState(false);
+    const notice = dismissed ? null : batchNotice(sum);
+    const status = pool ? statusOf(consumed, pool) : 'none';
     const usedPct = pctOf(consumed, pool);
+    const tableId = 'batch-table';
     return (
       <section className="section" aria-labelledby="org-title">
         <div className="section-head">
@@ -12,22 +83,48 @@
         </div>
         <div className="card org-card">
           <div className="org-top">
-            <p className="org-label">Consumed this contract term</p>
+            <p className="org-label">Consumed</p>
             <Button variant="secondary" size="sm" icon="plus" onClick={onRequest}>Request credits</Button>
           </div>
           <div className="org-figure">
             <span className="org-number tabular">{fmt(consumed)}</span>
-            <span className="org-of tabular">of {fmt(pool)} contracted</span>
-            <span className="org-pct tabular">· {fmtPct(Math.round(usedPct))} used</span>
-            <StatusBadge status={status} />
+            <span className="org-of tabular">of {fmt(pool)} total</span>
+            {pool > 0 && <span className="org-pct tabular">· {fmtPct(Math.round(usedPct))} used</span>}
+            {remaining > 0 && <StatusBadge status={status} />}
           </div>
           <UsageBar consumed={consumed} budget={pool} status={status} />
           <div className="org-row">
-            <span className="tabular">
-              {consumed <= pool ? `${fmt(pool - consumed)} credits remaining` : `${fmt(consumed - pool)} credits over the contracted amount`}
-            </span>
-            <span>Expires {MOCK.CONTRACT.expires}</span>
+            <span className="tabular">{fmt(remaining)} credits remaining</span>
+            <button
+              type="button"
+              className="batch-toggle"
+              aria-expanded={showBatches}
+              aria-controls={tableId}
+              onClick={() => setShowBatches(!showBatches)}
+            >
+              {batches.length} credit {batches.length === 1 ? 'batch' : 'batches'}
+              <Icon name={showBatches ? 'chevronDown' : 'chevronRight'} size={16} />
+            </button>
           </div>
+          {notice && (
+            <div className={`batch-notice is-${notice.tone}`} role={notice.tone === 'warn' ? 'alert' : 'status'}>
+              <Icon name={notice.tone === 'warn' ? 'alert' : 'info'} size={18} />
+              <p>
+                {notice.text}
+                {notice.request && (
+                  <>
+                    {' '}Contact your account manager or{' '}
+                    <button type="button" className="link-btn" onClick={onRequest}>Request credits</button>.
+                  </>
+                )}
+                {notice.tail && <> {notice.tail}</>}
+              </p>
+              <button type="button" className="icon-btn" aria-label="Dismiss notice" onClick={() => setDismissed(true)}>
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+          )}
+          {showBatches && <BatchTable batches={batches} id={tableId} />}
           <div className="org-alloc">
             <div className="alloc-item">
               <span className="alloc-label">Budgeted to departments</span>
@@ -41,7 +138,7 @@
                   text="Credits not yet given to any department as a budget. It only changes when you set or change a budget. It isn't the same as credits remaining, which is what's left to use."
                 />
               </span>
-              <span className="alloc-value tabular">{fmt(pool - allocated)}</span>
+              <span className="alloc-value tabular">{fmt(Math.max(0, pool - allocated))}</span>
             </div>
           </div>
           <p className="org-updated">
@@ -427,13 +524,13 @@
     );
   }
 
-  function CreditsPage({ state, onAdd, onManage, onRequest, onAssign = () => {}, highlightId }) {
+  function CreditsPage({ state, onAdd, onManage, onRequest, onAssign = () => {}, highlightId, batchScenario = 1 }) {
     const { users, departments } = state;
     const consumed = users.reduce((a, u) => a + u.consumed, 0);
     const allocated = departments.reduce((a, d) => a + d.budget, 0);
     return (
       <>
-        <OrgSummary consumed={consumed} pool={MOCK.POOL} allocated={allocated} onRequest={onRequest} />
+        <OrgSummary key={batchScenario} rawBatches={MOCK.BATCH_SCENARIOS[batchScenario].batches} allocated={allocated} onRequest={onRequest} />
         <HardLimitSection consumed={consumed} pool={MOCK.POOL} onRequest={onRequest} />
         <DepartmentTable
           departments={departments}

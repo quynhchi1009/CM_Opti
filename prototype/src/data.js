@@ -151,7 +151,24 @@
     { name: 'Web Experimentation', consumed: 1240 },
   ];
 
+  // Credit batches (allotments) per scenario. Status comes from the dates, not from a stored field.
+  // TODAY is fixed so the scenarios read the same on any day.
+  const TODAY = '2026-10-19';
+  const B = (start, end, allocated, remaining) => ({ start, end, allocated, remaining });
+  const BATCH_SCENARIOS = {
+    1: { title: '1 batch active', batches: [B('2026-01-01', '2027-03-31', 15000, 6800)] },
+    2: { title: 'Two active batches, overlapping', note: 'Both count toward Total; the batch that expires first is used first.', batches: [B('2026-01-01', '2027-12-01', 10000, 1800), B('2026-01-01', '2027-12-31', 5000, 5000)] },
+    3: { title: 'Active + Upcoming', note: "A new batch is signed but hasn't reached its start date. It shows in the table but doesn't count toward Total.", batches: [B('2026-01-01', '2026-12-31', 10000, 4000), B('2027-01-01', '2027-12-31', 20000, 20000)] },
+    4: { title: 'Expiring soon with credits left', note: 'A batch expires within 60 days and still has credits.', batches: [B('2026-01-01', '2026-10-31', 10000, 2500)] },
+    5: { title: 'Active + Expired', note: 'An expired batch drops out of Total, Consumed and Remaining. Its Remaining shows 0.', batches: [B('2026-01-01', '2026-12-31', 10000, 9000), B('2026-06-01', '2026-08-31', 5000, 0)] },
+    6: { title: 'All credits used, batch still active', batches: [B('2026-01-01', '2026-12-31', 10000, 0)] },
+    7: { title: 'Only an Upcoming batch', batches: [B('2026-11-01', '2027-12-31', 10000, 10000)] },
+    8: { title: 'Everything expired', batches: [B('2025-01-01', '2025-12-31', 5000, 0)] },
+  };
+
   window.MOCK = {
+    TODAY,
+    BATCH_SCENARIOS,
     POOL,
     CONTRACT: { start: 'August 1, 2025', expires: 'August 1, 2026' },
     CURRENT_ADMIN,
