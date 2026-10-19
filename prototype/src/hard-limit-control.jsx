@@ -54,10 +54,7 @@
     return (
       <section className="section hlc" aria-labelledby={titleId}>
         <div className="section-head">
-          <div>
-            <h2 className="section-title" id={titleId}>Credit limit</h2>
-            <p className="section-sub">Choose whether Opal stops when your organization has used all of its credits.</p>
-          </div>
+          <h2 className="section-title" id={titleId}>Credit limit</h2>
           <button type="button" className="link-btn" onClick={onShowIntro}>How the hard limit works</button>
         </div>
 
@@ -77,7 +74,7 @@
             <div className="hlc-copy">
               <p className="hlc-title">
                 Enforce a hard limit
-                <span className={'hlc-badge is-' + state}>{state === 'off' ? 'Off' : reached ? 'Limit reached' : 'Hard limit active'}</span>
+                {state !== 'off' && <span className={'hlc-badge is-' + state}>{reached ? 'Limit reached' : 'Hard limit active'}</span>}
               </p>
               <p className="hlc-text">
                 {enabled

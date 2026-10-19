@@ -21,26 +21,44 @@
     return { batches, active, total, remaining, consumed: total - remaining };
   }
 
-  // One notice at a time, most actionable first. Wording stays factual: nothing here says usage is blocked.
+  // One calm notice at a time, most useful first. Nothing here says usage is blocked.
   function batchNotice(sum) {
     const { batches, active, total, remaining } = sum;
     if (!active.length) {
       const next = batches.filter((b) => b.status === 'upcoming').sort((a, b) => a.start.localeCompare(b.start))[0];
-      if (next) return { tone: 'info', text: `No active credits yet. ${fmt(next.allocated)} credits start on ${batchDate(next.start)}.` };
+      if (next) return `${fmt(next.allocated)} credits start on ${batchDate(next.start)}. Until then there are no active credits.`;
       const last = [...batches].sort((a, b) => b.end.localeCompare(a.end))[0];
-      return { tone: 'info', text: `No active credits. Your last batch expired on ${batchDate(last.end)}.`, request: true };
+      return `Your last batch expired on ${batchDate(last.end)}. Request credits to add a new one.`;
     }
-    if (total > 0 && remaining === 0) return { tone: 'warn', text: 'All active credits are used.', request: true, tail: 'Your team can still use Opal.' };
+    if (total > 0 && remaining === 0) return `Your team can still use Opal. All ${fmt(total)} active credits are used.`;
     const soon = active
       .filter((b) => b.remaining > 0 && daysUntil(b.end) <= EXPIRY_WARN_DAYS)
       .sort((a, b) => a.end.localeCompare(b.end))[0];
-    if (soon) return { tone: 'info', text: `${fmt(soon.remaining)} credits expire on ${batchDate(soon.end)}. Unused credits won't carry over.` };
+    if (soon) return `${fmt(soon.remaining)} credits expire on ${batchDate(soon.end)}. Unused credits won't carry over.`;
     return null;
+  }
+
+  // "2 batches · next change 1 Jan 2027": the one date that matters, so the table can stay closed.
+  function batchSummary(batches) {
+    const events = [];
+    batches.forEach((b) => {
+      if (b.status === 'upcoming') events.push({ date: b.start, kind: 'starts' });
+      if (b.status === 'active') events.push({ date: b.end, kind: 'expires' });
+    });
+    events.sort((a, b) => a.date.localeCompare(b.date));
+    const count = `${batches.length} ${batches.length === 1 ? 'batch' : 'batches'}`;
+    if (!events.length) return count;
+    const e = events[0];
+    return `${count} · ${batches.length === 1 ? e.kind : 'next change'} ${batchDate(e.date)}`;
+  }
+
+  function BatchStatus({ status }) {
+    return <span className={`batch-status is-${status}`}>{BATCH_LABEL[status]}</span>;
   }
 
   function BatchTable({ batches, id }) {
     return (
-      <div className="batch-wrap table-scroll" id={id}>
+      <div className="batch-wrap" id={id}>
         <table className="table batch-table">
           <thead>
             <tr>
@@ -58,23 +76,37 @@
                 <td className="tabular">{batchDate(b.end)}</td>
                 <td className="num tabular">{fmt(b.allocated)}</td>
                 <td className="num tabular">{fmt(b.status === 'expired' ? 0 : b.remaining)}</td>
-                <td><span className={`badge badge-${b.status}`}>{BATCH_LABEL[b.status]}</span></td>
+                <td><BatchStatus status={b.status} /></td>
               </tr>
             ))}
           </tbody>
         </table>
+        <ul className="batch-list">
+          {batches.map((b, i) => (
+            <li key={i} className={b.status === 'expired' ? 'is-expired' : undefined}>
+              <span className="batch-list-top tabular">
+                {batchDate(b.start)} – {batchDate(b.end)}
+                <BatchStatus status={b.status} />
+              </span>
+              <span className="batch-list-sub tabular">
+                {fmt(b.status === 'expired' ? 0 : b.remaining)} of {fmt(b.allocated)} credits left
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
 
-  function OrgSummary({ rawBatches, allocated, onRequest }) {
+  function OrgSummary({ rawBatches, onRequest }) {
     const sum = summarize(rawBatches);
-    const { consumed, total: pool, remaining, batches } = sum;
-    const [showBatches, setShowBatches] = useState(batches.length > 1);
+    const { consumed, total: pool, remaining, batches, active } = sum;
+    // The table opens on its own only when it is the one thing that explains the card.
+    const [showBatches, setShowBatches] = useState(!active.length && batches.some((b) => b.status === 'upcoming'));
     const [dismissed, setDismissed] = useState(false);
-    const notice = dismissed ? null : batchNotice(sum);
+    const noticeText = batchNotice(sum);
     const status = pool ? statusOf(consumed, pool) : 'none';
-    const usedPct = pctOf(consumed, pool);
+    const exhausted = pool > 0 && remaining === 0;
     const tableId = 'batch-table';
     return (
       <section className="section" aria-labelledby="org-title">
@@ -83,67 +115,52 @@
         </div>
         <div className="card org-card">
           <div className="org-top">
-            <p className="org-label">Consumed</p>
+            <p className="org-label">Credits remaining</p>
             <Button variant="secondary" size="sm" icon="plus" onClick={onRequest}>Request credits</Button>
           </div>
           <div className="org-figure">
-            <span className="org-number tabular">{fmt(consumed)}</span>
-            <span className="org-of tabular">of {fmt(pool)} total</span>
-            {pool > 0 && <span className="org-pct tabular">· {fmtPct(Math.round(usedPct))} used</span>}
-            {remaining > 0 && <StatusBadge status={status} />}
+            {pool > 0 ? (
+              <>
+                <span className="org-number tabular">{fmt(remaining)}</span>
+                <span className="org-of tabular">of {fmt(pool)}</span>
+                {status === 'approaching' && <StatusBadge status={status} />}
+              </>
+            ) : (
+              <span className="org-number org-none">No active credits</span>
+            )}
           </div>
-          <UsageBar consumed={consumed} budget={pool} status={status} />
-          <div className="org-row">
-            <span className="tabular">{fmt(remaining)} credits remaining</span>
-            <button
-              type="button"
-              className="batch-toggle"
-              aria-expanded={showBatches}
-              aria-controls={tableId}
-              onClick={() => setShowBatches(!showBatches)}
-            >
-              {batches.length} credit {batches.length === 1 ? 'batch' : 'batches'}
-              <Icon name={showBatches ? 'chevronDown' : 'chevronRight'} size={16} />
-            </button>
-          </div>
-          {notice && (
-            <div className={`batch-notice is-${notice.tone}`} role={notice.tone === 'warn' ? 'alert' : 'status'}>
-              <Icon name={notice.tone === 'warn' ? 'alert' : 'info'} size={18} />
-              <p>
-                {notice.text}
-                {notice.request && (
-                  <>
-                    {' '}Contact your account manager or{' '}
-                    <button type="button" className="link-btn" onClick={onRequest}>Request credits</button>.
-                  </>
-                )}
-                {notice.tail && <> {notice.tail}</>}
-              </p>
+          {pool > 0 && (
+            <>
+              <UsageBar consumed={consumed} budget={pool} status={exhausted ? 'used' : status} />
+              <p className="org-used tabular">{fmt(consumed)} used · {fmtPct(Math.round(pctOf(consumed, pool)))}</p>
+            </>
+          )}
+          {noticeText && !dismissed && (
+            <div className="batch-notice" role="status">
+              <Icon name="info" size={18} />
+              <p>{noticeText}</p>
               <button type="button" className="icon-btn" aria-label="Dismiss notice" onClick={() => setDismissed(true)}>
                 <Icon name="x" size={16} />
               </button>
             </div>
           )}
+          <button
+            type="button"
+            className="batch-toggle"
+            aria-expanded={showBatches}
+            aria-controls={tableId}
+            onClick={() => setShowBatches(!showBatches)}
+          >
+            <Icon name={showBatches ? 'chevronDown' : 'chevronRight'} size={16} />
+            {batchSummary(batches)}
+          </button>
           {showBatches && <BatchTable batches={batches} id={tableId} />}
-          <div className="org-alloc">
-            <div className="alloc-item">
-              <span className="alloc-label">Budgeted to departments</span>
-              <span className="alloc-value tabular">{fmt(allocated)} <span className="muted">({fmtPct(pctOf(allocated, pool))})</span></span>
-            </div>
-            <div className="alloc-item">
-              <span className="alloc-label">
-                Available to allocate
-                <InfoTip
-                  label="About available to allocate"
-                  text="Credits not yet given to any department as a budget. It only changes when you set or change a budget. It isn't the same as credits remaining, which is what's left to use."
-                />
-              </span>
-              <span className="alloc-value tabular">{fmt(Math.max(0, pool - allocated))}</span>
-            </div>
-          </div>
           <p className="org-updated">
             <UsageAsOf />
             <InfoTip label="About usage timing" text={FRESHNESS_HELP} />
+            {noticeText && dismissed && (
+              <button type="button" className="link-btn org-restore" onClick={() => setDismissed(false)}>Show notice</button>
+            )}
           </p>
         </div>
       </section>
@@ -318,6 +335,13 @@
           <div>
             <h2 className="section-title" id="dept-title">Credit budget by department</h2>
             <p className="section-sub">Soft budgets for tracking and alerts. Usage is never blocked.</p>
+            <p className="section-alloc tabular">
+              {fmt(allocated)} budgeted ({fmtPct(pctOf(allocated, pool))}) · {fmt(Math.max(0, pool - allocated))} available to allocate
+              <InfoTip
+                label="About available to allocate"
+                text="Credits not yet given to any department as a budget. It only changes when you set or change a budget. It isn't the same as credits remaining, which is what's left to use."
+              />
+            </p>
             {departments.length > 0 && (
               <p className="rollup" aria-label="Department status summary">
                 {overRows.length + nearRows.length === 0 ? (
@@ -530,8 +554,7 @@
     const allocated = departments.reduce((a, d) => a + d.budget, 0);
     return (
       <>
-        <OrgSummary key={batchScenario} rawBatches={MOCK.BATCH_SCENARIOS[batchScenario].batches} allocated={allocated} onRequest={onRequest} />
-        <HardLimitSection consumed={consumed} pool={MOCK.POOL} onRequest={onRequest} />
+        <OrgSummary key={batchScenario} rawBatches={MOCK.BATCH_SCENARIOS[batchScenario].batches} onRequest={onRequest} />
         <DepartmentTable
           departments={departments}
           users={users}
@@ -543,6 +566,7 @@
           onAssign={onAssign}
           highlightId={highlightId}
         />
+        <HardLimitSection consumed={consumed} pool={MOCK.POOL} onRequest={onRequest} />
         <Breakdown users={users} departments={departments} />
         {state.history && <AllocationHistory history={state.history} departments={departments} />}
       </>
