@@ -4,8 +4,8 @@
     {
       "name": "credits-prototype",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "5173", "--directory", "prototype"],
-      "port": 5173
+      "runtimeArgs": ["-m", "http.server", "5174", "--directory", "prototype"],
+      "port": 5174
     }
   ]
 }
